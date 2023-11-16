@@ -19,7 +19,7 @@ func Publish(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	if err := s.SendEvent("message", string(body)); err != nil {
+	if err := s.SendMessage("", body); err != nil {
 		return err
 	}
 

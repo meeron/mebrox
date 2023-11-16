@@ -20,7 +20,7 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	defer s.Unsubscribe(id)
 	fmt.Printf("got new connection: %v\n", id)
 
-	s.SendEventTo(id, "ack", id)
+	s.SendEventTo(id, "ack", []byte(id))
 
 	for {
 		select {
