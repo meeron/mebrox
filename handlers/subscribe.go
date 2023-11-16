@@ -13,14 +13,27 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-store")
+	topic := r.URL.Query().Get("topic")
+	if topic == "" {
+		return responseBadRequest(w, "Invalid topic name")
+	}
 
-	id := s.Subscribe(w)
+	subscription := r.URL.Query().Get("subscription")
+	if subscription == "" {
+		return responseBadRequest(w, "Invalid subscription name")
+	}
+
+	id, err := s.Subscribe(w, topic, subscription)
 	defer s.Unsubscribe(id)
+
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("got new connection: %v\n", id)
 
-	s.SendEventTo(id, "ack", []byte(id))
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
 
 	for {
 		select {

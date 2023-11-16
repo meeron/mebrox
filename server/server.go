@@ -88,11 +88,24 @@ func (s *Server) SendMessage(topic string, body []byte) error {
 	return s.SendEvent("message", body)
 }
 
-func (s *Server) Subscribe(w http.ResponseWriter) string {
+func (s *Server) Subscribe(w http.ResponseWriter, topic string, subscription string) (string, error) {
+	messages, err := s.store.GetMessages(topic, subscription)
+	if err != nil {
+		return "", err
+	}
+
 	id := newId()
 	s.clients[id] = w
 
-	return id
+	s.SendEventTo(id, "ack", []byte(id))
+
+	for _, msg := range messages {
+		if err := s.SendEventTo(id, "message", msg.Body); err != nil {
+			return "", err
+		}
+	}
+
+	return id, nil
 }
 
 func (s *Server) Unsubscribe(id string) {

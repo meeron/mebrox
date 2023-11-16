@@ -8,8 +8,8 @@ import (
 type Storer interface {
 	CreateTopic(name string) error
 	DeleteTopic(name string) error
-	CreateSubscription(name string) error
-	DeleteSubscription(name string) error
+	CreateSubscription(topic string, subscription string) error
+	DeleteSubscription(topic string, subscription string) error
 	SaveMessage(topic string, msg Message) error
 	GetMessages(topic string, subscription string) ([]Message, error)
 }
@@ -29,7 +29,9 @@ func NewMessage(body []byte) Message {
 }
 
 func New() Storer {
-	return &memoryStore{}
+	return &memoryStore{
+		data: make(map[string]map[string][]Message),
+	}
 }
 
 func newMessageId() string {
