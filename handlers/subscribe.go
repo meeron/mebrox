@@ -7,30 +7,26 @@ import (
 	"github.com/meeron/mebrox/server"
 )
 
-func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) {
+func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return nil
 	}
 
-	//w.Header().Set("Content-Type", "text/event-stream")
-	//w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
 
-	//id := s.Subscribe(w)
-	//fmt.Printf("got new connection: %v\n", id)
+	id := s.Subscribe(w)
+	defer s.Unsubscribe(id)
+	fmt.Printf("got new connection: %v\n", id)
 
-	//s.SendEventTo(id.String(), "ack", id.String())
+	s.SendEventTo(id, "ack", id)
 
-	/*
-		for {
-			select {
-			case <-r.Context().Done():
-				s.Unsubscribe(id)
-				fmt.Printf("connection closed: %v\n", id)
-				return
-			}
+	for {
+		select {
+		case <-r.Context().Done():
+			fmt.Printf("connection closed: %v\n", id)
+			return nil
 		}
-	*/
-
-	fmt.Fprint(w, "ok")
+	}
 }
