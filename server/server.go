@@ -2,9 +2,9 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
+	"github.com/meeron/mebrox/logger"
 	"github.com/meeron/mebrox/store"
 )
 
@@ -36,16 +36,16 @@ func (s *Server) Run(addr string) {
 		Handler: s.mux,
 	}
 
-	log.Default().Println("Listening...")
+	logger.Info("Listening...")
 	if err := ser.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 }
 
 func (s *Server) HandleFunc(pattern string, handler ServerHandler) {
 	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if err := handler(s, w, r); err != nil {
-			log.Default().Printf("Error %v", err)
+			logger.Error(err)
 
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "%v", err)
@@ -72,8 +72,12 @@ func (s *Server) SendMessage(topic string, body []byte) error {
 }
 
 func (s *Server) Subscribe(w http.ResponseWriter, topic string, subscription string) error {
-	if _, ok := s.clients[subscription]; ok {
-		return fmt.Errorf("Subscription '%s' already exists", subscription)
+	if _, ok := s.clients[topic]; !ok {
+		s.clients[topic] = make(map[string]http.ResponseWriter)
+	}
+
+	if _, ok := s.clients[topic][subscription]; ok {
+		return fmt.Errorf("Already subscribed (Topic=%s, Subscription=%s)", topic, subscription)
 	}
 
 	if err := s.store.EnsureSubscription(topic, subscription); err != nil {
@@ -85,12 +89,12 @@ func (s *Server) Subscribe(w http.ResponseWriter, topic string, subscription str
 		return err
 	}
 
-	if _, ok := s.clients[topic]; !ok {
-		s.clients[topic] = make(map[string]http.ResponseWriter)
-	}
-
 	s.clients[topic][subscription] = w
-	log.Default().Printf("[Debug] Subscribed '%s' to '%s'", subscription, topic)
+	logger.Debug("Subscribed '%s' to '%s'", subscription, topic)
+
+	s.sendToSubscription(topic, subscription, event{
+		eventType: "welcome",
+	})
 
 	for _, msg := range messages {
 		e := event{
@@ -107,8 +111,8 @@ func (s *Server) Subscribe(w http.ResponseWriter, topic string, subscription str
 }
 
 func (s *Server) Unsubscribe(topic string, subscription string) {
-	delete(s.clients, subscription)
-	log.Default().Printf("[Debug] Unsubscribed '%s' from '%s'", subscription, topic)
+	delete(s.clients[topic], subscription)
+	logger.Debug("Unsubscribed '%s' from '%s'", subscription, topic)
 }
 
 func (s *Server) sendToSubscription(topic string, subsription string, e event) error {
