@@ -8,7 +8,11 @@ type memoryStore struct {
 	data map[string]map[string][]Message
 }
 
-func (m *memoryStore) CreateTopic(name string) error {
+func (m *memoryStore) EnsureTopic(name string) error {
+	if _, ok := m.data[name]; ok {
+		return nil
+	}
+
 	m.data[name] = make(map[string][]Message)
 	return nil
 }
@@ -18,10 +22,15 @@ func (m *memoryStore) DeleteTopic(name string) error {
 	return nil
 }
 
-func (m *memoryStore) CreateSubscription(topic string, subscription string) error {
-	subscriptions, ok := m.data[topic]
-	if !ok {
-		return fmt.Errorf("topic '%s' not found", topic)
+func (m *memoryStore) EnsureSubscription(topic string, subscription string) error {
+	if err := m.EnsureTopic(topic); err != nil {
+		return err
+	}
+
+	subscriptions := m.data[topic]
+
+	if _, ok := subscriptions[subscription]; ok {
+		return nil
 	}
 
 	subscriptions[subscription] = make([]Message, 0)

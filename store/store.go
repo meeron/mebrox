@@ -6,9 +6,9 @@ import (
 )
 
 type Storer interface {
-	CreateTopic(name string) error
+	EnsureTopic(name string) error
 	DeleteTopic(name string) error
-	CreateSubscription(topic string, subscription string) error
+	EnsureSubscription(topic string, subscription string) error
 	DeleteSubscription(topic string, subscription string) error
 	SaveMessage(topic string, msg Message) error
 	GetMessages(topic string, subscription string) ([]Message, error)

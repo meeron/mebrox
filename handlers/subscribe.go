@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/meeron/mebrox/server"
@@ -23,14 +22,10 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return responseBadRequest(w, "Invalid subscription name")
 	}
 
-	id, err := s.Subscribe(w, topic, subscription)
-	defer s.Unsubscribe(id)
-
-	if err != nil {
+	if err := s.Subscribe(w, topic, subscription); err != nil {
 		return err
 	}
-
-	fmt.Printf("got new connection: %v\n", id)
+	defer s.Unsubscribe(topic, subscription)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
@@ -38,7 +33,6 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	for {
 		select {
 		case <-r.Context().Done():
-			fmt.Printf("connection closed: %v\n", id)
 			return nil
 		}
 	}

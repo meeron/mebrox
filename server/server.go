@@ -1,9 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,15 +10,21 @@ import (
 
 type Server struct {
 	mux     *http.ServeMux
-	clients map[string]http.ResponseWriter
+	clients map[string]map[string]http.ResponseWriter
 	store   store.Storer
+}
+
+type event struct {
+	id        string
+	eventType string
+	data      []byte
 }
 
 type ServerHandler func(s *Server, w http.ResponseWriter, r *http.Request) error
 
 func New() *Server {
 	return &Server{
-		clients: make(map[string]http.ResponseWriter),
+		clients: make(map[string]map[string]http.ResponseWriter),
 		mux:     http.NewServeMux(),
 		store:   store.New(),
 	}
@@ -50,9 +53,52 @@ func (s *Server) HandleFunc(pattern string, handler ServerHandler) {
 	})
 }
 
-func (s *Server) SendEvent(event string, data []byte) error {
-	for id := range s.clients {
-		if err := s.SendEventTo(id, event, data); err != nil {
+func (s *Server) SendMessage(topic string, body []byte) error {
+	msg := store.NewMessage(body)
+
+	if err := s.store.EnsureTopic(topic); err != nil {
+		return err
+	}
+
+	if err := s.store.SaveMessage(topic, msg); err != nil {
+		return err
+	}
+
+	return s.sendToTopic(topic, event{
+		id:        msg.Id,
+		eventType: "message",
+		data:      msg.Body,
+	})
+}
+
+func (s *Server) Subscribe(w http.ResponseWriter, topic string, subscription string) error {
+	if _, ok := s.clients[subscription]; ok {
+		return fmt.Errorf("Subscription '%s' already exists", subscription)
+	}
+
+	if err := s.store.EnsureSubscription(topic, subscription); err != nil {
+		return err
+	}
+
+	messages, err := s.store.GetMessages(topic, subscription)
+	if err != nil {
+		return err
+	}
+
+	if _, ok := s.clients[topic]; !ok {
+		s.clients[topic] = make(map[string]http.ResponseWriter)
+	}
+
+	s.clients[topic][subscription] = w
+	log.Default().Printf("[Debug] Subscribed '%s' to '%s'", subscription, topic)
+
+	for _, msg := range messages {
+		e := event{
+			id:        msg.Id,
+			eventType: "message",
+			data:      msg.Body,
+		}
+		if err := s.sendToSubscription(topic, subscription, e); err != nil {
 			return err
 		}
 	}
@@ -60,14 +106,20 @@ func (s *Server) SendEvent(event string, data []byte) error {
 	return nil
 }
 
-func (s *Server) SendEventTo(clientId string, event string, data []byte) error {
-	w, ok := s.clients[clientId]
-	if !ok {
-		return errors.New("client not found")
-	}
+func (s *Server) Unsubscribe(topic string, subscription string) {
+	delete(s.clients, subscription)
+	log.Default().Printf("[Debug] Unsubscribed '%s' from '%s'", subscription, topic)
+}
 
-	fmt.Fprintf(w, "event: %s\n", event)
-	fmt.Fprintf(w, "data: %s", data)
+func (s *Server) sendToSubscription(topic string, subsription string, e event) error {
+	subscriptions := s.clients[topic]
+	w := subscriptions[subsription]
+
+	fmt.Fprintf(w, "event: %s\n", e.eventType)
+	if e.id != "" {
+		fmt.Fprintf(w, "id: %s\n", e.id)
+	}
+	fmt.Fprintf(w, "data: %s", e.data)
 	fmt.Fprint(w, "\n\n")
 
 	f, ok := w.(http.Flusher)
@@ -78,44 +130,12 @@ func (s *Server) SendEventTo(clientId string, event string, data []byte) error {
 	return nil
 }
 
-func (s *Server) SendMessage(topic string, body []byte) error {
-	msg := store.NewMessage(body)
-
-	if err := s.store.SaveMessage(topic, msg); err != nil {
-		return err
-	}
-
-	return s.SendEvent("message", body)
-}
-
-func (s *Server) Subscribe(w http.ResponseWriter, topic string, subscription string) (string, error) {
-	messages, err := s.store.GetMessages(topic, subscription)
-	if err != nil {
-		return "", err
-	}
-
-	id := newId()
-	s.clients[id] = w
-
-	s.SendEventTo(id, "ack", []byte(id))
-
-	for _, msg := range messages {
-		if err := s.SendEventTo(id, "message", msg.Body); err != nil {
-			return "", err
+func (s *Server) sendToTopic(topic string, e event) error {
+	for subscription := range s.clients[topic] {
+		if err := s.sendToSubscription(topic, subscription, e); err != nil {
+			return err
 		}
 	}
 
-	return id, nil
-}
-
-func (s *Server) Unsubscribe(id string) {
-	delete(s.clients, id)
-}
-
-func newId() string {
-	data := make([]byte, 16)
-
-	rand.Read(data)
-
-	return hex.EncodeToString(data)
+	return nil
 }
