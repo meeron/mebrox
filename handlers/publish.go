@@ -19,14 +19,12 @@ func Publish(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return responseBadRequest(w, "Invalid topic name")
 	}
 
-	body, err := io.ReadAll(r.Body)
+	_, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
 	}
 
-	if err := s.SendMessage(topic, body); err != nil {
-		return err
-	}
+	// TODO: Enqueue message
 
 	fmt.Fprint(w, "ok")
 

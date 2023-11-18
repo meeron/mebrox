@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/meeron/mebrox/logger"
 	"github.com/meeron/mebrox/server"
 )
 
@@ -22,10 +23,10 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return responseBadRequest(w, "Invalid subscription name")
 	}
 
-	if err := s.Subscribe(w, topic, subscription); err != nil {
-		return err
-	}
-	defer s.Unsubscribe(topic, subscription)
+	s.SendEvent(w, server.Event{
+		EventType: "welcome",
+	})
+	logger.Debug("Connected (%s-%s)", topic, subscription)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
@@ -33,6 +34,7 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	for {
 		select {
 		case <-r.Context().Done():
+			logger.Debug("Disonnected (%s-%s)", topic, subscription)
 			return nil
 		}
 	}
