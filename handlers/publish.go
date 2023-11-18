@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/meeron/mebrox/broker"
 	"github.com/meeron/mebrox/server"
 )
 
@@ -19,12 +20,15 @@ func Publish(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return responseBadRequest(w, "Invalid topic name")
 	}
 
-	_, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
 	}
 
-	// TODO: Enqueue message
+	msg := broker.NewMessage(body)
+	if err := s.Broker().SendMessage(topic, msg); err != nil {
+		return err
+	}
 
 	fmt.Fprint(w, "ok")
 

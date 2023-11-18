@@ -23,6 +23,11 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return responseBadRequest(w, "Invalid subscription name")
 	}
 
+	sub := s.Broker().GetSubscription(topic, subscription)
+	if sub == nil {
+		return responseNotFound(w, "Subscription not found")
+	}
+
 	s.SendEvent(w, server.Event{
 		EventType: "welcome",
 	})
@@ -36,6 +41,13 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		case <-r.Context().Done():
 			logger.Debug("Disonnected (%s-%s)", topic, subscription)
 			return nil
+		case msg := <-sub.Msg:
+			s.SendEvent(w, server.Event{
+				Id:        msg.Id,
+				EventType: "message",
+				Data:      msg.Body,
+			})
+			break
 		}
 	}
 }

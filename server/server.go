@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/meeron/mebrox/broker"
 	"github.com/meeron/mebrox/logger"
 )
 
 type Server struct {
 	mux     *http.ServeMux
 	clients map[string][]http.ResponseWriter
+	broker  *broker.Broker
 }
 
 type Event struct {
@@ -20,10 +22,11 @@ type Event struct {
 
 type ServerHandler func(s *Server, w http.ResponseWriter, r *http.Request) error
 
-func New() *Server {
+func New(broker *broker.Broker) *Server {
 	return &Server{
 		clients: make(map[string][]http.ResponseWriter),
 		mux:     http.NewServeMux(),
+		broker:  broker,
 	}
 }
 
@@ -64,4 +67,8 @@ func (s *Server) SendEvent(w http.ResponseWriter, e Event) error {
 	}
 
 	return nil
+}
+
+func (s *Server) Broker() *broker.Broker {
+	return s.broker
 }
