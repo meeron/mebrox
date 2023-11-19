@@ -15,6 +15,8 @@ func main() {
 
 	s.HandleFunc("/publish", handlers.Publish)
 	s.HandleFunc("/subscribe", handlers.Subscribe)
+	s.HandleFunc("/messages", handlers.Messages)
+	s.HandleFunc("/messages/", handlers.Messages)
 
 	s.Run(":3000")
 }

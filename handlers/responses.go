@@ -16,3 +16,8 @@ func responseNotFound(w http.ResponseWriter, message string) error {
 	fmt.Fprint(w, message)
 	return nil
 }
+
+func responseMethodNotAllowed(w http.ResponseWriter) error {
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	return nil
+}

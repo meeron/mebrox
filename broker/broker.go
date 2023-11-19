@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	MaxConsumed        = 3
-	LockTimeoutMinutes = 1
+	DefaultMaxConsumed        = 3
+	DefaultLockTimeoutMinutes = 5
 )
 
 type Broker struct {
@@ -25,9 +25,15 @@ type Message struct {
 }
 
 type Subscription struct {
+	cfg        *subscriptionCfg
 	messages   []*Message
 	deadLetter []*Message
 	Msg        chan *Message
+}
+
+type subscriptionCfg struct {
+	maxConsumed int
+	lockTimeout time.Duration
 }
 
 func NewMessage(body []byte) *Message {
@@ -56,7 +62,13 @@ func (b *Broker) CreateTopic(name string) {
 }
 
 func (b *Broker) CreateSubscription(topic string, sub string) {
+	cfg := &subscriptionCfg{
+		maxConsumed: DefaultMaxConsumed,
+		lockTimeout: DefaultLockTimeoutMinutes * time.Minute,
+	}
+
 	b.data[topic][sub] = &Subscription{
+		cfg:        cfg,
 		messages:   make([]*Message, 0),
 		deadLetter: make([]*Message, 0),
 		Msg:        make(chan *Message),
@@ -78,15 +90,31 @@ func (b *Broker) GetSubscription(topic string, subscription string) *Subscriptio
 	return sub
 }
 
+func (b *Broker) CommitMessage(id string) (bool, error) {
+	for _, topic := range b.data {
+		for _, sub := range topic {
+			for index, msg := range sub.messages {
+				if msg.Id == id {
+					sub.messages = append(sub.messages[:index], sub.messages[index+1:]...)
+					logger.Debug("Message commited (%s)", id)
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
 func monitor(sub *Subscription) {
 	for {
 		for i, msg := range sub.messages {
 			if msg.lockTime != (time.Time{}) &&
-				time.Since(msg.lockTime).Minutes() < LockTimeoutMinutes {
+				time.Since(msg.lockTime) < sub.cfg.lockTimeout {
 				continue
 			}
 
-			if msg.consumedCount >= MaxConsumed {
+			if msg.consumedCount >= sub.cfg.maxConsumed {
 				sub.messages = append(sub.messages[:i], sub.messages[i+1:]...)
 				sub.deadLetter = append(sub.deadLetter, msg)
 

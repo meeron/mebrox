@@ -11,8 +11,7 @@ import (
 
 func Publish(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return nil
+		return responseMethodNotAllowed(w)
 	}
 
 	topic := r.URL.Query().Get("topic")

@@ -9,8 +9,7 @@ import (
 
 func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return nil
+		return responseMethodNotAllowed(w)
 	}
 
 	topic := r.URL.Query().Get("topic")
