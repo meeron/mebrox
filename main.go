@@ -19,10 +19,10 @@ func main() {
 
 	s := server.New(broker)
 
-	s.HandleFunc("/publish", handlers.Publish)
-	s.HandleFunc("/subscribe", handlers.Subscribe)
 	s.HandleFunc("/messages", handlers.Messages)
 	s.HandleFunc("/messages/", handlers.Messages)
+	s.HandleFunc("/topics", handlers.Topics)
+	s.HandleFunc("/topics/", handlers.Topics)
 
 	s.Run(":3000")
 }
