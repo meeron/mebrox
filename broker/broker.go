@@ -121,16 +121,22 @@ func (b *Broker) GetSubscription(topic string, subscription string) (*Subscripti
 	return sub, nil
 }
 
-func (b *Broker) CommitMessage(id string) (bool, error) {
-	for _, topic := range b.topics {
-		for _, sub := range topic.subscriptions {
-			for index, msg := range sub.messages {
-				if msg.Id == id {
-					sub.messages = append(sub.messages[:index], sub.messages[index+1:]...)
-					logger.Debug("Message commited (%s)", id)
-					return true, nil
-				}
-			}
+func (b *Broker) CommitMessage(topic string, sub string, id string) (bool, error) {
+	t, ok := b.topics[topic]
+	if !ok {
+		return false, errors.New("topic not found")
+	}
+
+	s, subOk := t.subscriptions[sub]
+	if !subOk {
+		return false, errors.New("subscription not found")
+	}
+
+	for index, msg := range s.messages {
+		if msg.Id == id {
+			s.messages = append(s.messages[:index], s.messages[index+1:]...)
+			logger.Debug("Message commited (%s)", id)
+			return true, nil
 		}
 	}
 
