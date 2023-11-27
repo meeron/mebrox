@@ -22,9 +22,9 @@ func Subscribe(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 		return responseBadRequest(w, "Invalid subscription name")
 	}
 
-	sub := s.Broker().GetSubscription(topic, subscription)
-	if sub == nil {
-		return responseNotFound(w, "Subscription not found")
+	sub, err := s.Broker().GetSubscription(topic, subscription)
+	if err != nil {
+		return err
 	}
 
 	s.SendEvent(w, server.Event{

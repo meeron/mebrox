@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+
 	"github.com/meeron/mebrox/broker"
 	"github.com/meeron/mebrox/handlers"
 	"github.com/meeron/mebrox/server"
@@ -8,8 +10,12 @@ import (
 
 func main() {
 	broker := broker.NewBroker()
-	broker.CreateTopic("test")
-	broker.CreateSubscription("test", "test")
+	if err := broker.CreateTopic("test"); err != nil {
+		log.Fatal(err)
+	}
+	if err := broker.CreateSubscription("test", "test"); err != nil {
+		log.Fatal(err)
+	}
 
 	s := server.New(broker)
 

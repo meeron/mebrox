@@ -3,6 +3,7 @@ package broker
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/meeron/mebrox/logger"
@@ -14,7 +15,7 @@ const (
 )
 
 type Broker struct {
-	data map[string]map[string]*Subscription
+	topics map[string]*Topic
 }
 
 type Message struct {
@@ -29,6 +30,10 @@ type Subscription struct {
 	messages   []*Message
 	deadLetter []*Message
 	Msg        chan *Message
+}
+
+type Topic struct {
+	subscriptions map[string]*Subscription
 }
 
 type subscriptionCfg struct {
@@ -46,53 +51,79 @@ func NewMessage(body []byte) *Message {
 
 func NewBroker() *Broker {
 	return &Broker{
-		data: make(map[string]map[string]*Subscription),
+		topics: make(map[string]*Topic),
 	}
 }
 
 func (b *Broker) SendMessage(topic string, msg *Message) error {
-	for _, sub := range b.data[topic] {
+	t, ok := b.topics[topic]
+	if !ok {
+		return errors.New("topic not found")
+	}
+
+	for _, sub := range t.subscriptions {
 		sub.messages = append(sub.messages, msg)
 	}
 	return nil
 }
 
-func (b *Broker) CreateTopic(name string) {
-	b.data[name] = make(map[string]*Subscription)
+func (b *Broker) CreateTopic(name string) error {
+	_, ok := b.topics[name]
+	if ok {
+		return errors.New("topic already exists")
+	}
+
+	b.topics[name] = &Topic{
+		subscriptions: make(map[string]*Subscription),
+	}
+
+	return nil
 }
 
-func (b *Broker) CreateSubscription(topic string, sub string) {
+func (b *Broker) CreateSubscription(topic string, sub string) error {
 	cfg := &subscriptionCfg{
 		maxConsumed: DefaultMaxConsumed,
 		lockTimeout: DefaultLockTimeoutMinutes * time.Minute,
 	}
 
-	b.data[topic][sub] = &Subscription{
+	t, ok := b.topics[topic]
+	if !ok {
+		return errors.New("topic does not exists")
+	}
+
+	_, ok = t.subscriptions[sub]
+	if ok {
+		return errors.New("subscription already exists")
+	}
+
+	t.subscriptions[sub] = &Subscription{
 		cfg:        cfg,
 		messages:   make([]*Message, 0),
 		deadLetter: make([]*Message, 0),
 		Msg:        make(chan *Message),
 	}
-	go monitor(b.data[topic][sub])
+	go monitor(t.subscriptions[sub])
+
+	return nil
 }
 
-func (b *Broker) GetSubscription(topic string, subscription string) *Subscription {
-	t, topicOk := b.data[topic]
-	if !topicOk {
-		return nil
-	}
-
-	sub, ok := t[subscription]
+func (b *Broker) GetSubscription(topic string, subscription string) (*Subscription, error) {
+	t, ok := b.topics[topic]
 	if !ok {
-		return nil
+		return nil, errors.New("topic not found")
 	}
 
-	return sub
+	sub, ok := t.subscriptions[subscription]
+	if !ok {
+		return nil, errors.New("subscription does not exists")
+	}
+
+	return sub, nil
 }
 
 func (b *Broker) CommitMessage(id string) (bool, error) {
-	for _, topic := range b.data {
-		for _, sub := range topic {
+	for _, topic := range b.topics {
+		for _, sub := range topic.subscriptions {
 			for index, msg := range sub.messages {
 				if msg.Id == id {
 					sub.messages = append(sub.messages[:index], sub.messages[index+1:]...)
