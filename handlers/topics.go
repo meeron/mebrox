@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,7 +54,7 @@ func publishMessage(s *server.Server, w http.ResponseWriter, r *http.Request, pa
 		return err
 	}
 
-	fmt.Fprint(w, "ok")
+	fmt.Fprint(w, msg.Id)
 	return nil
 }
 
@@ -65,7 +66,7 @@ func subscribe(s *server.Server, w http.ResponseWriter, r *http.Request, params 
 	topic := params[1]
 	subscription := params[2]
 
-	sub, err := s.Broker().GetSubscription(topic, subscription)
+	sub, err := s.Broker().Subscribe(topic, subscription)
 	if err != nil {
 		return err
 	}
@@ -100,15 +101,15 @@ func commitMessage(s *server.Server, w http.ResponseWriter, r *http.Request, par
 	}
 
 	topic := params[1]
-	subscription := params[2]
+	subName := params[2]
 	id := params[3]
 
-	ok, err := s.Broker().CommitMessage(topic, subscription, id)
-	if err != nil {
-		return err
+	sub := s.Broker().FindSubscription(topic, subName)
+	if sub == nil {
+		return errors.New("subscription not found")
 	}
 
-	if !ok {
+	if ok := sub.CommitMessage(id); !ok {
 		return responseNotFound(w, "message not found")
 	}
 

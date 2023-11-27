@@ -4,18 +4,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"sync"
 	"time"
-
-	"github.com/meeron/mebrox/logger"
-)
-
-const (
-	DefaultMaxConsumed        = 3
-	DefaultLockTimeoutMinutes = 5
 )
 
 type Broker struct {
-	topics map[string]*Topic
+	topics        map[string]*Topic
+	subscriptions map[string]*Subscription
+	subMux        sync.Mutex
+	createMux     sync.Mutex
 }
 
 type Message struct {
@@ -25,20 +23,8 @@ type Message struct {
 	consumedCount int
 }
 
-type Subscription struct {
-	cfg        *subscriptionCfg
-	messages   []*Message
-	deadLetter []*Message
-	Msg        chan *Message
-}
-
 type Topic struct {
 	subscriptions map[string]*Subscription
-}
-
-type subscriptionCfg struct {
-	maxConsumed int
-	lockTimeout time.Duration
 }
 
 func NewMessage(body []byte) *Message {
@@ -51,7 +37,8 @@ func NewMessage(body []byte) *Message {
 
 func NewBroker() *Broker {
 	return &Broker{
-		topics: make(map[string]*Topic),
+		topics:        make(map[string]*Topic),
+		subscriptions: make(map[string]*Subscription),
 	}
 }
 
@@ -62,12 +49,15 @@ func (b *Broker) SendMessage(topic string, msg *Message) error {
 	}
 
 	for _, sub := range t.subscriptions {
-		sub.messages = append(sub.messages, msg)
+		sub.AddMessage(msg)
 	}
 	return nil
 }
 
 func (b *Broker) CreateTopic(name string) error {
+	b.createMux.Lock()
+	defer b.createMux.Unlock()
+
 	_, ok := b.topics[name]
 	if ok {
 		return errors.New("topic already exists")
@@ -81,6 +71,9 @@ func (b *Broker) CreateTopic(name string) error {
 }
 
 func (b *Broker) CreateSubscription(topic string, sub string) error {
+	b.createMux.Lock()
+	defer b.createMux.Unlock()
+
 	cfg := &subscriptionCfg{
 		maxConsumed: DefaultMaxConsumed,
 		lockTimeout: DefaultLockTimeoutMinutes * time.Minute,
@@ -98,16 +91,15 @@ func (b *Broker) CreateSubscription(topic string, sub string) error {
 
 	t.subscriptions[sub] = &Subscription{
 		cfg:        cfg,
-		messages:   make([]*Message, 0),
-		deadLetter: make([]*Message, 0),
+		messages:   make(map[string]*Message),
+		deadLetter: make(map[string]*Message),
 		Msg:        make(chan *Message),
 	}
-	go monitor(t.subscriptions[sub])
 
 	return nil
 }
 
-func (b *Broker) GetSubscription(topic string, subscription string) (*Subscription, error) {
+func (b *Broker) Subscribe(topic string, subscription string) (*Subscription, error) {
 	t, ok := b.topics[topic]
 	if !ok {
 		return nil, errors.New("topic not found")
@@ -118,55 +110,31 @@ func (b *Broker) GetSubscription(topic string, subscription string) (*Subscripti
 		return nil, errors.New("subscription does not exists")
 	}
 
+	key := fmt.Sprintf("%s_%s", topic, subscription)
+
+	b.subMux.Lock()
+	_, ok = b.subscriptions[key]
+	if !ok {
+		b.subscriptions[key] = sub
+		go monitor(sub)
+	}
+	b.subMux.Unlock()
+
 	return sub, nil
 }
 
-func (b *Broker) CommitMessage(topic string, sub string, id string) (bool, error) {
+func (b *Broker) FindSubscription(topic string, sub string) *Subscription {
 	t, ok := b.topics[topic]
 	if !ok {
-		return false, errors.New("topic not found")
+		return nil
 	}
 
 	s, subOk := t.subscriptions[sub]
 	if !subOk {
-		return false, errors.New("subscription not found")
+		return nil
 	}
 
-	for index, msg := range s.messages {
-		if msg.Id == id {
-			s.messages = append(s.messages[:index], s.messages[index+1:]...)
-			logger.Debug("Message commited (%s)", id)
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-func monitor(sub *Subscription) {
-	for {
-		for i, msg := range sub.messages {
-			if msg.lockTime != (time.Time{}) &&
-				time.Since(msg.lockTime) < sub.cfg.lockTimeout {
-				continue
-			}
-
-			if msg.consumedCount >= sub.cfg.maxConsumed {
-				sub.messages = append(sub.messages[:i], sub.messages[i+1:]...)
-				sub.deadLetter = append(sub.deadLetter, msg)
-
-				logger.Debug("Message moved to dead letter (%s)", msg.Id)
-				continue
-			}
-
-			sub.Msg <- msg
-
-			msg.lockTime = time.Now()
-			msg.consumedCount++
-		}
-
-		time.Sleep(1 * time.Second)
-	}
+	return s
 }
 
 func newMessageId() string {
