@@ -16,6 +16,7 @@ var (
 	subscribeRegex      *regexp.Regexp
 	commitMessageRegex  *regexp.Regexp
 	topicRegex          *regexp.Regexp
+	subscriptionRegex   *regexp.Regexp
 )
 
 func Topics(s *server.Server, w http.ResponseWriter, r *http.Request) error {
@@ -37,6 +38,11 @@ func Topics(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	topicParams := topicRegex.FindStringSubmatch(r.URL.String())
 	if len(topicParams) > 1 {
 		return topicCreate(s, w, r, topicParams)
+	}
+
+	subscriptionsParam := subscriptionRegex.FindStringSubmatch(r.URL.String())
+	if len(subscriptionsParam) > 1 {
+		return subscriptionCreate(s, w, r, subscriptionsParam)
 	}
 
 	return responseNotFound(w, "not found")
@@ -137,9 +143,26 @@ func topicCreate(s *server.Server, w http.ResponseWriter, r *http.Request, param
 	return responseMethodNotAllowed(w)
 }
 
+func subscriptionCreate(s *server.Server, w http.ResponseWriter, r *http.Request, params []string) error {
+	topic := params[1]
+	subName := params[2]
+
+	// Create
+	if r.Method == http.MethodPost {
+		if err := s.Broker().CreateSubscription(topic, subName); err != nil {
+			return err
+		}
+
+		return responseCreated(w, "created")
+	}
+
+	return responseMethodNotAllowed(w)
+}
+
 func init() {
-	publishMessageRegex = regexp.MustCompile("/topics/(\\w+)/messages($|/)")
-	subscribeRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)/subscribe($|/)")
-	commitMessageRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)/messages/(\\w+)/commit($|/)")
-	topicRegex = regexp.MustCompile("/topics/(\\w+)($|/)")
+	publishMessageRegex = regexp.MustCompile("/topics/(\\w+)/messages($|/$)")
+	subscribeRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)/subscribe($|/$)")
+	commitMessageRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)/messages/(\\w+)/commit($|/$)")
+	topicRegex = regexp.MustCompile("/topics/(\\w+)($|/$)")
+	subscriptionRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)($|/$)")
 }
