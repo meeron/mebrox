@@ -91,8 +91,8 @@ func (b *Broker) CreateSubscription(topic string, sub string) error {
 
 	t.subscriptions[sub] = &Subscription{
 		cfg:        cfg,
-		messages:   make(map[string]*Message),
-		deadLetter: make(map[string]*Message),
+		messages:   make([]*Message, 0),
+		deadLetter: make([]*Message, 0),
 		Msg:        make(chan *Message),
 	}
 

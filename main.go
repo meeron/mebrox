@@ -1,11 +1,10 @@
 package main
 
 import (
-	"log"
-
 	"github.com/meeron/mebrox/broker"
 	"github.com/meeron/mebrox/handlers"
 	"github.com/meeron/mebrox/server"
+	"log"
 )
 
 func main() {

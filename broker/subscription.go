@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"sort"
 	"time"
 
 	"github.com/meeron/mebrox/logger"
@@ -13,8 +14,8 @@ const (
 
 type Subscription struct {
 	cfg        *subscriptionCfg
-	messages   map[string]*Message
-	deadLetter map[string]*Message
+	messages   []*Message
+	deadLetter []*Message
 	Msg        chan *Message
 }
 
@@ -24,32 +25,39 @@ type subscriptionCfg struct {
 }
 
 func (s *Subscription) AddMessage(msg *Message) {
-	s.messages[msg.Id] = msg
+	s.messages = append(s.messages, msg)
 }
 
 func (s *Subscription) CommitMessage(id string) bool {
-	if _, ok := s.messages[id]; !ok {
+	index := sort.Search(len(s.messages), func(i int) bool {
+		return s.messages[i].Id == id
+	})
+
+	// If not found sort.Search returns n=len(s.messages)
+	if index >= len(s.messages) {
 		return false
 	}
 
-	delete(s.messages, id)
+	s.messages = append(s.messages[:index], s.messages[index+1:]...)
+	logger.Debug("Message committed (%s)", id)
 
-	logger.Debug("Message commited (%s)", id)
-
-	return false
+	return true
 }
 
 func monitor(sub *Subscription) {
 	for {
-		for _, msg := range sub.messages {
+		for index, msg := range sub.messages {
 			if msg.lockTime != (time.Time{}) &&
 				time.Since(msg.lockTime) < sub.cfg.lockTimeout {
 				continue
 			}
 
 			if msg.consumedCount >= sub.cfg.maxConsumed {
-				delete(sub.messages, msg.Id)
-				sub.deadLetter[msg.Id] = msg
+				// Remove message
+				sub.messages = append(sub.messages[:index], sub.messages[index+1:]...)
+
+				// Append message to dead letter
+				sub.deadLetter = append(sub.deadLetter, msg)
 
 				logger.Debug("Message moved to dead letter (%s)", msg.Id)
 				continue
