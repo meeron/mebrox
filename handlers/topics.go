@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -16,6 +15,7 @@ var (
 	publishMessageRegex *regexp.Regexp
 	subscribeRegex      *regexp.Regexp
 	commitMessageRegex  *regexp.Regexp
+	topicRegex          *regexp.Regexp
 )
 
 func Topics(s *server.Server, w http.ResponseWriter, r *http.Request) error {
@@ -32,6 +32,11 @@ func Topics(s *server.Server, w http.ResponseWriter, r *http.Request) error {
 	commitParams := commitMessageRegex.FindStringSubmatch(r.URL.String())
 	if len(commitParams) > 1 {
 		return commitMessage(s, w, r, commitParams)
+	}
+
+	topicParams := topicRegex.FindStringSubmatch(r.URL.String())
+	if len(topicParams) > 1 {
+		return topicCreate(s, w, r, topicParams)
 	}
 
 	return responseNotFound(w, "not found")
@@ -54,8 +59,7 @@ func publishMessage(s *server.Server, w http.ResponseWriter, r *http.Request, pa
 		return err
 	}
 
-	fmt.Fprint(w, msg.Id)
-	return nil
+	return send(w, msg.Id)
 }
 
 func subscribe(s *server.Server, w http.ResponseWriter, r *http.Request, params []string) error {
@@ -71,9 +75,11 @@ func subscribe(s *server.Server, w http.ResponseWriter, r *http.Request, params 
 		return err
 	}
 
-	s.SendEvent(w, server.Event{
+	if err := s.SendEvent(w, server.Event{
 		EventType: "welcome",
-	})
+	}); err != nil {
+		return err
+	}
 	logger.Debug("Connected (%s-%s)", topic, subscription)
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -82,10 +88,10 @@ func subscribe(s *server.Server, w http.ResponseWriter, r *http.Request, params 
 	for {
 		select {
 		case <-r.Context().Done():
-			logger.Debug("Disonnected (%s-%s)", topic, subscription)
+			logger.Debug("Disconnected (%s-%s)", topic, subscription)
 			return nil
 		case msg := <-sub.Msg:
-			s.SendEvent(w, server.Event{
+			_ = s.SendEvent(w, server.Event{
 				Id:        msg.Id,
 				EventType: "message",
 				Data:      msg.Body,
@@ -113,13 +119,27 @@ func commitMessage(s *server.Server, w http.ResponseWriter, r *http.Request, par
 		return responseNotFound(w, "message not found")
 	}
 
-	fmt.Fprintf(w, "ok")
+	return send(w, "ok")
+}
 
-	return nil
+func topicCreate(s *server.Server, w http.ResponseWriter, r *http.Request, params []string) error {
+	name := params[1]
+
+	// Create topic
+	if r.Method == http.MethodPost {
+		if err := s.Broker().CreateTopic(name); err != nil {
+			return err
+		}
+
+		return responseCreated(w, "created")
+	}
+
+	return responseMethodNotAllowed(w)
 }
 
 func init() {
 	publishMessageRegex = regexp.MustCompile("/topics/(\\w+)/messages($|/)")
 	subscribeRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)/subscribe($|/)")
 	commitMessageRegex = regexp.MustCompile("/topics/(\\w+)/subscriptions/(\\w+)/messages/(\\w+)/commit($|/)")
+	topicRegex = regexp.MustCompile("/topics/(\\w+)($|/)")
 }
