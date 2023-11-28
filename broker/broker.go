@@ -12,8 +12,8 @@ import (
 type Broker struct {
 	topics        map[string]*Topic
 	subscriptions map[string]*Subscription
-	subMux        sync.Mutex
-	createMux     sync.Mutex
+	subMux        *sync.Mutex
+	createMux     *sync.Mutex
 }
 
 type Message struct {
@@ -39,6 +39,8 @@ func NewBroker() *Broker {
 	return &Broker{
 		topics:        make(map[string]*Topic),
 		subscriptions: make(map[string]*Subscription),
+		subMux:        new(sync.Mutex),
+		createMux:     new(sync.Mutex),
 	}
 }
 
@@ -93,6 +95,7 @@ func (b *Broker) CreateSubscription(topic string, sub string) error {
 		cfg:        cfg,
 		messages:   make([]*Message, 0),
 		deadLetter: make([]*Message, 0),
+		mux:        new(sync.Mutex),
 		Msg:        make(chan *Message),
 	}
 
@@ -140,7 +143,7 @@ func (b *Broker) FindSubscription(topic string, sub string) *Subscription {
 func newMessageId() string {
 	data := make([]byte, 16)
 
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	return hex.EncodeToString(data)
 }

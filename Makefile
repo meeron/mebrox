@@ -3,3 +3,6 @@ build:
 
 run: build
 	./bin/mebrox
+
+test:
+	go test ./... -v --race

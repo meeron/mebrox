@@ -2,6 +2,7 @@ package broker
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/meeron/mebrox/logger"
@@ -16,6 +17,7 @@ type Subscription struct {
 	cfg        *subscriptionCfg
 	messages   []*Message
 	deadLetter []*Message
+	mux        *sync.Mutex
 	Msg        chan *Message
 }
 
@@ -25,10 +27,16 @@ type subscriptionCfg struct {
 }
 
 func (s *Subscription) AddMessage(msg *Message) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	s.messages = append(s.messages, msg)
 }
 
 func (s *Subscription) CommitMessage(id string) bool {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	index := sort.Search(len(s.messages), func(i int) bool {
 		return s.messages[i].Id == id
 	})
@@ -53,11 +61,14 @@ func monitor(sub *Subscription) {
 			}
 
 			if msg.consumedCount >= sub.cfg.maxConsumed {
+				sub.mux.Lock()
+
 				// Remove message
 				sub.messages = append(sub.messages[:index], sub.messages[index+1:]...)
 
 				// Append message to dead letter
 				sub.deadLetter = append(sub.deadLetter, msg)
+				sub.mux.Unlock()
 
 				logger.Debug("Message moved to dead letter (%s)", msg.Id)
 				continue
