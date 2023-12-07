@@ -41,7 +41,7 @@ func TestCreateSubscription(t *testing.T) {
 	})
 }
 
-func TestSubscribe(t *testing.T) {
+func TestFindSubscription(t *testing.T) {
 	broker := NewBroker(context.TODO())
 
 	if err := broker.CreateTopic("test"); err != nil {
@@ -51,17 +51,10 @@ func TestSubscribe(t *testing.T) {
 		panic(err)
 	}
 
-	t.Run("should subscribe to existing subscription", func(t *testing.T) {
-		sub, err := broker.Subscribe("test", "test")
+	t.Run("should find subscription", func(t *testing.T) {
+		sub := broker.FindSubscription("test", "test")
 
-		assert.Nilf(t, err, "%v", err)
 		assert.NotNil(t, sub, "subscription IS nil")
-	})
-
-	t.Run("should return error when subscribing to not existing", func(t *testing.T) {
-		_, err := broker.Subscribe("test", "test1")
-
-		assert.NotNil(t, err, "error SHOULD be nil")
 	})
 }
 
@@ -135,24 +128,23 @@ func TestGetMessageAndCommit(t *testing.T) {
 	if err := broker.CreateSubscription("test", "test"); err != nil {
 		panic(err)
 	}
-	sub, _ := broker.Subscribe("test", "test")
+	sub := broker.FindSubscription("test", "test")
 
 	t.Run("should add receive messages", func(t *testing.T) {
 		const messagesToAdd int = 50
+		ctx, cancel := context.WithCancel(context.TODO())
 
-		go func(n int) {
+		go func(n int, cancel context.CancelFunc) {
 			for i := 0; i < n; i++ {
 				sub.AddMessage(NewMessage([]byte{byte(i)}))
 			}
-		}(messagesToAdd)
+		}(messagesToAdd, cancel)
 
-		for msg := range sub.Msg {
+		for msg := range sub.Subscribe(ctx) {
+			// Cancel after first read from channel
+			cancel()
 			if ok := sub.CommitMessage(msg.Id); !ok {
 				panic(errors.New("message not committed. " + msg.Id))
-			}
-
-			if len(sub.messages) == 0 {
-				sub.unsubscribe()
 			}
 		}
 

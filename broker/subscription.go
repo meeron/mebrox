@@ -78,7 +78,11 @@ func (s *Subscription) Subscribe(ctx context.Context) <-chan *Message {
 		defer close(c)
 
 		for {
-			for i, msg := range s.messages {
+			s.mux.Lock()
+			messages := append(make([]*Message, 0), sub.messages...)
+			s.mux.Unlock()
+
+			for i, msg := range messages {
 				if msg.lockTime != (time.Time{}) &&
 					time.Since(msg.lockTime) < sub.cfg.lockTimeout {
 					continue
