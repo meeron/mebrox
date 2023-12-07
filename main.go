@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"github.com/meeron/mebrox/broker"
 	"github.com/meeron/mebrox/handlers"
 	"github.com/meeron/mebrox/server"
@@ -8,7 +9,7 @@ import (
 )
 
 func main() {
-	broker := broker.NewBroker()
+	broker := broker.NewBroker(context.Background())
 	if err := broker.CreateTopic("test"); err != nil {
 		log.Fatal(err)
 	}

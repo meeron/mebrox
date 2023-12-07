@@ -1,13 +1,15 @@
 package broker
 
 import (
+	"context"
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 )
 
 func TestCreateTopic(t *testing.T) {
-	broker := NewBroker()
+	broker := NewBroker(context.TODO())
 
 	t.Run("should create new topic", func(t *testing.T) {
 		err := broker.CreateTopic("topic")
@@ -22,7 +24,7 @@ func TestCreateTopic(t *testing.T) {
 }
 
 func TestCreateSubscription(t *testing.T) {
-	broker := NewBroker()
+	broker := NewBroker(context.TODO())
 	if err := broker.CreateTopic("test"); err != nil {
 		panic(err)
 	}
@@ -40,7 +42,7 @@ func TestCreateSubscription(t *testing.T) {
 }
 
 func TestSubscribe(t *testing.T) {
-	broker := NewBroker()
+	broker := NewBroker(context.TODO())
 
 	if err := broker.CreateTopic("test"); err != nil {
 		panic(err)
@@ -64,7 +66,7 @@ func TestSubscribe(t *testing.T) {
 }
 
 func TestBroker_FindSubscription(t *testing.T) {
-	broker := NewBroker()
+	broker := NewBroker(context.TODO())
 
 	if err := broker.CreateTopic("test"); err != nil {
 		panic(err)
@@ -87,7 +89,7 @@ func TestBroker_FindSubscription(t *testing.T) {
 }
 
 func TestAddMessage(t *testing.T) {
-	broker := NewBroker()
+	broker := NewBroker(context.TODO())
 
 	if err := broker.CreateTopic("test"); err != nil {
 		panic(err)
@@ -121,5 +123,39 @@ func TestAddMessage(t *testing.T) {
 		wg.Wait()
 
 		assert.Equal(t, messagesToAdd, len(sub.messages))
+	})
+}
+
+func TestGetMessageAndCommit(t *testing.T) {
+	broker := NewBroker(context.TODO())
+
+	if err := broker.CreateTopic("test"); err != nil {
+		panic(err)
+	}
+	if err := broker.CreateSubscription("test", "test"); err != nil {
+		panic(err)
+	}
+	sub, _ := broker.Subscribe("test", "test")
+
+	t.Run("should add receive messages", func(t *testing.T) {
+		const messagesToAdd int = 50
+
+		go func(n int) {
+			for i := 0; i < n; i++ {
+				sub.AddMessage(NewMessage([]byte{byte(i)}))
+			}
+		}(messagesToAdd)
+
+		for msg := range sub.Msg {
+			if ok := sub.CommitMessage(msg.Id); !ok {
+				panic(errors.New("message not committed. " + msg.Id))
+			}
+
+			if len(sub.messages) == 0 {
+				sub.unsubscribe()
+			}
+		}
+
+		assert.Equal(t, 0, len(sub.messages))
 	})
 }

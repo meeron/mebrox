@@ -76,9 +76,9 @@ func subscribe(s *server.Server, w http.ResponseWriter, r *http.Request, params 
 	topic := params[1]
 	subscription := params[2]
 
-	sub, err := s.Broker().Subscribe(topic, subscription)
-	if err != nil {
-		return err
+	sub := s.Broker().FindSubscription(topic, subscription)
+	if sub == nil {
+		return responseNotFound(w, "subscription not found")
 	}
 
 	if err := s.SendEvent(w, server.Event{
@@ -91,20 +91,34 @@ func subscribe(s *server.Server, w http.ResponseWriter, r *http.Request, params 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 
-	for {
-		select {
-		case <-r.Context().Done():
-			logger.Debug("Disconnected (%s-%s)", topic, subscription)
-			return nil
-		case msg := <-sub.Msg:
-			_ = s.SendEvent(w, server.Event{
-				Id:        msg.Id,
-				EventType: "message",
-				Data:      msg.Body,
-			})
-			break
-		}
+	for msg := range sub.Subscribe(r.Context()) {
+		_ = s.SendEvent(w, server.Event{
+			Id:        msg.Id,
+			EventType: "message",
+			Data:      msg.Body,
+		})
 	}
+
+	logger.Debug("Disconnected (%s-%s)", topic, subscription)
+
+	return nil
+
+	/*
+		for {
+			select {
+			case <-r.Context().Done():
+				logger.Debug("Disconnected (%s-%s)", topic, subscription)
+				return nil
+			case msg := <-sub.Msg:
+				_ = s.SendEvent(w, server.Event{
+					Id:        msg.Id,
+					EventType: "message",
+					Data:      msg.Body,
+				})
+				break
+			}
+		}
+	*/
 }
 
 func commitMessage(s *server.Server, w http.ResponseWriter, r *http.Request, params []string) error {

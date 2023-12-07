@@ -1,10 +1,10 @@
 package broker
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -14,6 +14,7 @@ type Broker struct {
 	subscriptions map[string]*Subscription
 	subMux        *sync.Mutex
 	createMux     *sync.Mutex
+	ctx           context.Context
 }
 
 type Message struct {
@@ -35,12 +36,13 @@ func NewMessage(body []byte) *Message {
 	}
 }
 
-func NewBroker() *Broker {
+func NewBroker(ctx context.Context) *Broker {
 	return &Broker{
 		topics:        make(map[string]*Topic),
 		subscriptions: make(map[string]*Subscription),
 		subMux:        new(sync.Mutex),
 		createMux:     new(sync.Mutex),
+		ctx:           ctx,
 	}
 }
 
@@ -76,11 +78,6 @@ func (b *Broker) CreateSubscription(topic string, sub string) error {
 	b.createMux.Lock()
 	defer b.createMux.Unlock()
 
-	cfg := &subscriptionCfg{
-		maxConsumed: DefaultMaxConsumed,
-		lockTimeout: DefaultLockTimeoutMinutes * time.Minute,
-	}
-
 	t, ok := b.topics[topic]
 	if !ok {
 		return errors.New("topic does not exists")
@@ -91,39 +88,9 @@ func (b *Broker) CreateSubscription(topic string, sub string) error {
 		return errors.New("subscription already exists")
 	}
 
-	t.subscriptions[sub] = &Subscription{
-		cfg:        cfg,
-		messages:   make([]*Message, 0),
-		deadLetter: make([]*Message, 0),
-		mux:        new(sync.Mutex),
-		Msg:        make(chan *Message),
-	}
+	t.subscriptions[sub] = NewSubscription()
 
 	return nil
-}
-
-func (b *Broker) Subscribe(topic string, subscription string) (*Subscription, error) {
-	t, ok := b.topics[topic]
-	if !ok {
-		return nil, errors.New("topic not found")
-	}
-
-	sub, ok := t.subscriptions[subscription]
-	if !ok {
-		return nil, errors.New("subscription does not exists")
-	}
-
-	key := fmt.Sprintf("%s_%s", topic, subscription)
-
-	b.subMux.Lock()
-	_, ok = b.subscriptions[key]
-	if !ok {
-		b.subscriptions[key] = sub
-		go monitor(sub)
-	}
-	b.subMux.Unlock()
-
-	return sub, nil
 }
 
 func (b *Broker) FindSubscription(topic string, sub string) *Subscription {
